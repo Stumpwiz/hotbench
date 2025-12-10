@@ -20,7 +20,7 @@ class MetaAnalyzer:
 
     def __init__(self):
         self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model_name = "gpt-4"
+        self.model_name = "gpt-4o-mini"  # Changed from gpt-4 to avoid rate limits
 
     @staticmethod
     def create_analysis_prompt(results: ConsolidatedResults, config: ContestConfig) -> str:
@@ -62,7 +62,9 @@ class MetaAnalyzer:
                     data_summary.append(f"  - Scholarship: {score.scholarship}/{SCORE_CATEGORIES['scholarship']}")
                     data_summary.append(f"  - Effort: {score.effort}/{SCORE_CATEGORIES['effort']}")
                     data_summary.append(f"  - Total: {score.total}/{max_score_per_judge}")
-                    data_summary.append(f"  Rationale: {score.rationale}")
+                    # Truncate rationale to 200 characters to reduce token usage
+                    rationale_preview = score.rationale[:200] + "..." if len(score.rationale) > 200 else score.rationale
+                    data_summary.append(f"  Rationale: {rationale_preview}")
                     data_summary.append("")
 
         prompt = f"""You are a meta-analyst reviewing the results of a Black History Month essay contest for middle school students.

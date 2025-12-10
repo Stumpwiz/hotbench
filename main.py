@@ -75,6 +75,7 @@ def main():
 
         # Save individual judge reports
         console.print("\n[bold]Step 5: Saving judge reports...[/bold]")
+        disqualification_report_file = evaluator.save_disqualification_report()
         summary_report_file = evaluator.save_summary_report()
         judge_report_files = evaluator.save_judge_reports()
 
@@ -91,6 +92,8 @@ def main():
         console.print("[bold green]EVALUATION COMPLETE![/bold green]")
         console.print("=" * 80)
         console.print(f"\nTotal essays evaluated: {len(evaluations)}")
+        if evaluator.disqualified_essays:
+            console.print(f"Total essays disqualified: {len(evaluator.disqualified_essays)}")
         console.print(f"All output files saved to: {OUTPUT_DIR}/")
         console.print("\n[bold]Generated Files:[/bold]")
         for file_path in judge_report_files:
@@ -99,6 +102,8 @@ def main():
         console.print(f"  • {meta_analysis_file.name}")
         if summary_report_file:
             console.print(f"  • {summary_report_file.name}")
+        if disqualification_report_file:
+            console.print(f"  • {disqualification_report_file.name}")
 
         winners = results.get_winners()
         if winners:

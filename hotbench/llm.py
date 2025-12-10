@@ -23,6 +23,7 @@ class EssayEvaluator:
         self.essays_dir = essays_dir or ESSAY_DIR
         self.output_dir = output_dir or OUTPUT_DIR
         self.essays: List[Essay] = []
+        self.disqualified_essays: List[Essay] = []
         self.evaluations: List[EssayEvaluation] = []
         self.judges: List[Judge] = get_all_judges()
 
@@ -35,14 +36,27 @@ class EssayEvaluator:
             f for f in self.essays_dir.glob("*.txt") if validate_essay_file(f)
         ]
 
-        self.essays = [Essay(f) for f in txt_files]
-        self.essays.sort(key=lambda e: e.student_name)  # Sort for consistent order
+        all_essays = [Essay(f) for f in txt_files]
+        all_essays.sort(key=lambda e: e.student_name)  # Sort for consistent order
+
+        # Separate qualified and disqualified essays
+        self.essays = [e for e in all_essays if not e.is_disqualified]
+        self.disqualified_essays = [e for e in all_essays if e.is_disqualified]
+
+        # Report disqualified essays
+        if self.disqualified_essays:
+            console.print(f"\n[bold red]⚠ {len(self.disqualified_essays)} essay(s) DISQUALIFIED:[/bold red]")
+            for essay in self.disqualified_essays:
+                console.print(f"  [red]✗[/red] {essay.student_name} - {essay.disqualification_reason}")
 
         if not self.essays:
-            console.print("[yellow]No essay files found![/yellow]")
+            if self.disqualified_essays:
+                console.print("\n[yellow]No qualified essays found - all were disqualified![/yellow]")
+            else:
+                console.print("[yellow]No essay files found![/yellow]")
             console.print(f"Place essay files as 'firstnameLastname.txt' in {self.essays_dir}/")
         else:
-            console.print(f"[green]Found {len(self.essays)} essay(s):[/green]")
+            console.print(f"\n[green]✓ Found {len(self.essays)} qualified essay(s):[/green]")
             for essay in self.essays:
                 console.print(f"  • {essay.student_name} ({essay.word_count} words)")
 
@@ -112,6 +126,41 @@ class EssayEvaluator:
             console.print(f"  ✓ Saved judge{judge.judge_id}.txt")
 
         return saved_files
+
+    def save_disqualification_report(self) -> Optional[Path]:
+        """Save a report of disqualified essays"""
+        if not self.disqualified_essays:
+            return None
+
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        report_file = self.output_dir / "disqualified_essays.txt"
+
+        report_lines = [
+            "=" * 80,
+            "DISQUALIFIED ESSAYS - WORD LIMIT VIOLATIONS",
+            "=" * 80,
+            "",
+            f"The following {len(self.disqualified_essays)} essay(s) were disqualified for exceeding",
+            "the maximum word limit of 400 words and were not evaluated by judges.",
+            "",
+            "-" * 80,
+            ""
+        ]
+
+        for essay in self.disqualified_essays:
+            report_lines.extend([
+                f"STUDENT: {essay.student_name}",
+                f"WORD COUNT: {essay.word_count}",
+                f"REASON: {essay.disqualification_reason}",
+                "-" * 80,
+                ""
+            ])
+
+        with open(report_file, 'w', encoding='utf-8', newline='\n') as f:
+            f.write("\n".join(report_lines))
+
+        console.print(f"  ✓ Saved disqualified_essays.txt")
+        return report_file
 
     def save_summary_report(self) -> Optional[Path]:
         """Save a summary report of all evaluations"""

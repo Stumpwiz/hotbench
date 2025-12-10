@@ -76,7 +76,12 @@ def format_score_breakdown(scores: dict) -> str:
         for key, max_score in SCORE_CATEGORIES.items()
     ]
 
+    # Calculate total from category scores if not explicitly provided
+    total_score = scores.get('total', 0)
+    if total_score == 0:
+        total_score = sum(scores.get(key, 0) for key in SCORE_CATEGORIES.keys())
+
     total_max_score = sum(SCORE_CATEGORIES.values())
-    lines.append(f"TOTAL: {scores.get('total', 0)}/{total_max_score}")
+    lines.append(f"TOTAL: {total_score}/{total_max_score}")
 
     return "\n".join(lines)

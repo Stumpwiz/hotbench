@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     NUM_JUDGES: int = 4
     NUM_WINNERS: int = 3
 
+    # Essay constraints
+    MAX_WORD_COUNT: int = 400
+
     # Logging and output
     VERBOSE: bool = True
 

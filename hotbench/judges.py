@@ -30,12 +30,14 @@ class JudgeScore(BaseModel):
                              ge=1, le=SCORE_CATEGORIES['scholarship'])
     effort: int = Field(..., description=f"Score for effort (1-{SCORE_CATEGORIES['effort']})", ge=1,
                         le=SCORE_CATEGORIES['effort'])
-    rationale: str = Field(..., description="Detailed rationale for the scores provided, citing examples from the text.")
+    rationale: str = Field(...,
+                           description="Detailed rationale for the scores provided, citing examples from the text.")
 
     @property
     def total(self) -> int:
         """Calculate the total score."""
         return self.effectiveness + self.creativity + self.scholarship + self.effort
+
 
 class Judge(ABC):
     """Abstract base class for an AI Judge"""
@@ -106,7 +108,8 @@ class OpenAIAcademicJudge(Judge):
         super().__init__(judge_id, "The Academic", model_name)
         if not os.getenv("OPENAI_API_KEY"):
             self.client = None
-            logging.warning(f"Judge {self.judge_id} ({self.judge_type}): OPENAI_API_KEY not found. Will use simulation.")
+            logging.warning(
+                f"Judge {self.judge_id} ({self.judge_type}): OPENAI_API_KEY not found. Will use simulation.")
         else:
             self.client = openai.OpenAI()
 
@@ -145,11 +148,12 @@ class GoogleCreativeJudge(Judge):
 
     model: Optional[genai.GenerativeModel]
 
-    def __init__(self, judge_id: int, model_name: str = "gemini-1.5-flash"):
+    def __init__(self, judge_id: int, model_name: str = "gemini-2.5-flash"):
         super().__init__(judge_id, "The Creative Writer", model_name)
         if not os.getenv("GOOGLE_API_KEY"):
             self.model = None
-            logging.warning(f"Judge {self.judge_id} ({self.judge_type}): GOOGLE_API_KEY not found. Will use simulation.")
+            logging.warning(
+                f"Judge {self.judge_id} ({self.judge_type}): GOOGLE_API_KEY not found. Will use simulation.")
         else:
             genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
             self.model = genai.GenerativeModel(self.model_name)
@@ -180,6 +184,83 @@ class GoogleCreativeJudge(Judge):
             return self._perform_live_evaluation(self.model, prompt)
 
 
+class OpenAIHistoryJudge(Judge):
+    """A history professor judge using an OpenAI model."""
+
+    client: Optional[openai.OpenAI]
+
+    def __init__(self, judge_id: int, model_name: str = "gpt-4o-mini"):
+        super().__init__(judge_id, "History Professor", model_name)
+        if not os.getenv("OPENAI_API_KEY"):
+            self.client = None
+            logging.warning(
+                f"Judge {self.judge_id} ({self.judge_type}): OPENAI_API_KEY not found. Will use simulation.")
+        else:
+            self.client = openai.OpenAI()
+
+    def _perform_live_evaluation(self, client: openai.OpenAI, prompt: str) -> JudgeScore:
+        """Helper method to perform the actual API call."""
+        try:
+            kwargs = {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+                "response_format": {"type": "json_object"},
+            }
+            response = client.chat.completions.create(**kwargs)
+            payload = json.loads(response.choices[0].message.content)
+            return JudgeScore.model_validate(payload)
+        except (openai.OpenAIError, json.JSONDecodeError, ValidationError, KeyError, IndexError):
+            logging.exception("OpenAI call or parsing failed; falling back to simulation.")
+            return self._simulate_score("")
+
+    def evaluate(self, essay_content: str, student_name: str) -> JudgeScore:
+        if not self.client:
+            return self._simulate_score(essay_content)
+        else:
+            prompt = self._create_prompt(self.judge_type, essay_content)
+            return self._perform_live_evaluation(self.client, prompt)
+
+
+class GoogleLiteratureJudge(Judge):
+    """An English Literature professor judge using a Google model."""
+
+    model: Optional[genai.GenerativeModel]
+
+    def __init__(self, judge_id: int, model_name: str = "gemini-2.5-flash"):
+        super().__init__(judge_id, "English Literature Professor", model_name)
+        if not os.getenv("GOOGLE_API_KEY"):
+            self.model = None
+            logging.warning(
+                f"Judge {self.judge_id} ({self.judge_type}): GOOGLE_API_KEY not found. Will use simulation.")
+        else:
+            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+            self.model = genai.GenerativeModel(self.model_name)
+
+    def _perform_live_evaluation(self, model: genai.GenerativeModel, prompt: str) -> JudgeScore:
+        """Helper method to perform the actual API call."""
+        try:
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=0.2
+                )
+            )
+            payload = json.loads(response.text)
+            return JudgeScore.model_validate(payload)
+        except (json.JSONDecodeError, ValidationError, AttributeError, KeyError):
+            logging.exception("Google LLM call or parsing failed; falling back to simulation.")
+            return self._simulate_score("")
+
+    def evaluate(self, essay_content: str, student_name: str) -> JudgeScore:
+        if not self.model:
+            return self._simulate_score(essay_content)
+        else:
+            prompt = self._create_prompt(self.judge_type, essay_content)
+            return self._perform_live_evaluation(self.model, prompt)
+
+
 def get_all_judges() -> List[Judge]:
     """
     Instantiate and return all configured judges.
@@ -188,6 +269,6 @@ def get_all_judges() -> List[Judge]:
     return [
         OpenAIAcademicJudge(judge_id=1),
         GoogleCreativeJudge(judge_id=2),
-        # Add more judges here, e.g., another OpenAI judge with a different persona
-        # OpenAIAcademicJudge(judge_id=3, model_name="gpt-4"),
+        OpenAIHistoryJudge(judge_id=3),
+        GoogleLiteratureJudge(judge_id=4),
     ]

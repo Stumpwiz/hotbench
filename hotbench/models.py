@@ -2,12 +2,13 @@
 Data models for essays and evaluations
 """
 
+import re
 from pathlib import Path
 from typing import Dict, Tuple, List
 
 from hotbench.judges import JudgeScore
 from hotbench.utils import count_words, format_score_breakdown
-from hotbench.settings import ContestConfig
+from hotbench.settings import ContestConfig, settings
 
 
 class Essay:
@@ -18,7 +19,21 @@ class Essay:
         self.filename = filepath.name
 
         # Extract student name from filename (firstnameLastname.txt)
-        self.student_name = filepath.stem.replace("_", " ").replace("-", " ")
+        # Convert to "Firstname Lastname" format
+        # Split on capital letters to separate firstname and Lastname
+        # Pattern: match lowercase word(s) at start, then capture each capitalized word
+        name_parts = re.findall(r'[a-z]+|[A-Z][a-z]*', filepath.stem)
+        if len(name_parts) >= 2:
+            # Capitalize first letter of each name part (firstname and Lastname)
+            formatted_parts = [part.capitalize() for part in name_parts]
+            # Truncate first name to 11 characters if longer
+            if len(formatted_parts[0]) > 11:
+                formatted_parts[0] = formatted_parts[0][:11]
+            self.student_name = " ".join(formatted_parts)
+        else:
+            # Fallback to simple title case if pattern doesn't match
+            name_raw = filepath.stem.replace("_", " ").replace("-", " ")
+            self.student_name = name_raw.title()
 
         # Read essay content
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -27,8 +42,16 @@ class Essay:
         # Calculate word count
         self.word_count = count_words(self.content)
 
+        # Check if essay exceeds word limit and should be disqualified
+        self.is_disqualified = self.word_count > settings.MAX_WORD_COUNT
+        self.disqualification_reason = (
+            f"Exceeds word limit ({self.word_count}/{settings.MAX_WORD_COUNT} words)"
+            if self.is_disqualified else None
+        )
+
     def __repr__(self):
-        return f"Essay(student={self.student_name}, words={self.word_count})"
+        status = " [DISQUALIFIED]" if self.is_disqualified else ""
+        return f"Essay(student={self.student_name}, words={self.word_count}{status})"
 
 
 class EssayEvaluation:
